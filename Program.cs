@@ -15,7 +15,46 @@ using System.Threading;
 using NAudio.Mixer;
 using System.Diagnostics;
 using NAudio.Wave;
-using RosSharp.RosBridgeClient;
+
+//#     #################################
+//#     # 
+//#     # Created by Ivan, Milko, Stefan 
+//#     # SRG - Service Robotics Group Bulgaria
+//#     # Version 1.0 from Apr. 6th, 2019.
+//#     #
+//#     # Based on:  https://github.com/stevecox1964/WinRecognize
+//#     # https://github.com/eclipse/paho.mqtt.m2mqtt/tree/master/M2Mqtt, http://wiki.ros.org/mqtt_bridge
+//#     #################################
+//#     # If cloning from GitHub, You can find the required Google credentials file
+//#     # in the SRG shared directory:  Proj T2s-89d4c34d98fc.json
+//#     #
+//#     # You can generate your own credentials file at Google cloud and replace in:
+//#     # Environment.SetEnvironmentVariable("GOOGLE_APPLICATION_CREDENTIALS", "Proj T2s-89d4c34d98fc.json");
+//#     #################################
+
+//#     #################################
+//#     # On the ROS side:
+//#     # Set serializer/deserializer in mqtt_bridge: /home/robcoctrl/catkin_ws/src/mqtt_bridge/config/openhab_tts_stt_params.yaml
+//#     #     to:   serializer: json:dumps        deserializer: json: loads
+
+//########### Publish/Subscribe to STT (Speech To Text) Bulgarian topics ROS/MQTT communication ##########
+//# //////////////////////////////////////////////////////////////////////////////////////////////////////
+//# // ROS topics: 
+//# //        /sttbg_ros/stt_text	        String
+//# //        /sttbg_ros/enable		        String  enable/disable 
+//# //        /sttbg_ros/response		    String    
+//# // MQTT topics: 
+//# //        /sttbg_mqtt/stt_text	        String
+//# //        /sttbg_mqtt/enable		    String
+//# //        /sttbg_mqtt/response		    String
+//# // 
+//# // The mqtt_bridge ROS package is set to transfer the messages between ROS and the MQTT broker between the corrresponding topics
+//# // These topics are configured in ROS mqtt_bridge package, in /home/<your user>/catkin_ws/src/mqtt_bridge/config/openhab_tts_stt_params.yaml
+//# // In the same config file, set serializer/deserializer for mqtt_bridge to:   serializer: json:dumps        deserializer: json: loads
+//# ///////////////////////////////////////////////////////////////////////////////////////////////////////
+//https://www.nuget.org/packages/M2Mqtt/
+//Install-Package M2Mqtt -Version 4.3.0
+
 
 namespace STT_Bulgarian_Console_app
 {
@@ -296,11 +335,6 @@ namespace STT_Bulgarian_Console_app
 
         private static Boolean monitoring = false;
 
-        //private RecognitionConfig oneShotConfig;
-        //private SpeechClient speech = SpeechClient.Create();
-        //private SpeechClient.StreamingRecognizeStream streamingCall;
-        //private StreamingRecognizeRequest streamingRequest;
-
         private static BufferedWaveProvider waveBuffer;
 
         static TimerCallback callback = new TimerCallback(Tick);
@@ -310,7 +344,6 @@ namespace STT_Bulgarian_Console_app
         private static WaveInEvent waveIn = new NAudio.Wave.WaveInEvent();
         private static bool timer1Enabled = false;
 
-        private static bool sttEnabled = false;
         private static MqttClient mqttClient;
 
         static public void Tick(Object stateInfo)
@@ -324,29 +357,26 @@ namespace STT_Bulgarian_Console_app
 
         static void Main(string[] args)
         {
-            //https://www.nuget.org/packages/M2Mqtt/
-            //Install-Package M2Mqtt -Version 4.3.0
 
             Console.OutputEncoding = System.Text.Encoding.UTF8;
 
         // MQTT client setup
         //https://community.openhab.org/t/clearing-mqtt-retained-messages/58221
 
-            // Change default MQTT broker address here
+            // Set the default MQTT broker address here:
             string BrokerAddress = "192.168.1.2";
 
             if (args.Length == 1)
             {
                 BrokerAddress = args[0];
-                System.Console.WriteLine("Setting broker IP to: " + BrokerAddress);
+                System.Console.WriteLine("Setting MQTT broker IP to: " + BrokerAddress);
             }
             else
             {
-                System.Console.WriteLine("To change the broker IP when starting the app, use: STT_Bulgarian_Console_app.exe \"MQTT_broker_name_or_IP\"");
-                System.Console.WriteLine("Setting broker IP to the default: " + BrokerAddress);
+                System.Console.WriteLine("To change the broker IP, when starting the app use: STT_Bulgarian_Console_app.exe \"MQTT_broker_name_or_IP\"");
+                System.Console.WriteLine("Setting MQTT broker IP to the default: " + BrokerAddress);
             }
 
-            //var client = new MqttClient("192.168.1.2");
             mqttClient = new MqttClient(BrokerAddress);
 
 
@@ -361,39 +391,24 @@ namespace STT_Bulgarian_Console_app
             // supply - user, pass for the MQTT broker
             mqttClient.Connect(clientId, "openhabian", "robko123");
 
-            //########### Publish/Subscribe to STT (Speech To Text) Bulgarian topics ROS/MQTT communication ##########
-            //# //////////////////////////////////////////////////////////////////////////////////////////////////////
-            //# // ROS topics: 
-            //# //        /sttbg_ros/stt_text	        String
-            //# //        /sttbg_ros/enable		        String  //no Bool on the Windows side? So we make it enable/disable words... 
-            //# //        /sttbg_ros/response		    Bool    
-            //# // MQTT topics: 
-            //# //        /sttbg_mqtt/stt_text	        String
-            //# //        /sttbg_mqtt/enable		    String
-            //# //        /sttbg_mqtt/response		    Bool
-            //# // 
-            //# // mqtt_bridge ROS package is set to transfer the messages between ROS and the MQTT broker in both directions
-            //# // Topics have to be setup in mqtt_bridge package in /home/robcoctrl/catkin_ws/src/mqtt_bridge/config/openhab_tts_stt_params.yaml
-            //# //
-            //# ///////////////////////////////////////////////////////////////////////////////////////////////////////
 
-            // Subscribe to the required MQTT topics with QoS 2
-            // There is a bug when you specify more than one topic at the same time???
+
+            // There is a bug when you specify more than one topic at the same time ???
             //https://stackoverflow.com/questions/39917469/exception-of-type-uplibrary-networking-m2mqtt-exceptions-mqttclientexception-w
             //client.Subscribe(
             //    new string[] { "/ttsbg_mqtt/text_to_be_spoken", "/ttsbg_mqtt/command" },
             //    new byte[] { MqttMsgBase.QOS_LEVEL_AT_LEAST_ONCE });
+
+            // Subscribe to  MQTT topics with QoS 2
             mqttClient.Subscribe(new string[] { "/sttbg_mqtt/enable" }, new byte[] { MqttMsgBase.QOS_LEVEL_EXACTLY_ONCE });
 
             //TODO
-            // Publish enabled response to the MQTT response topic
-            // Cant find data type other than String for the MQTT Publisher???? Publish the response as a string?
-            // bool enbabled = false;
-            //client.Publish("/tts_bg_mqtt/response", enabled, MqttMsgBase.QOS_LEVEL_EXACTLY_ONCE);
-            //client.Publish("/tts_bg_mqtt/stt_text", Encoding.UTF8.GetBytes(strResponse), MqttMsgBase.QOS_LEVEL_EXACTLY_ONCE);
+            // Add get_status command and /sttbg_mqtt/command topic, and publish back a response to the MQTT response topic:
+            //mqttClient.Publish("/sttbg_mqtt/response", Encoding.UTF8.GetBytes("{\"data\": \"" + "enabled" + "\"}"), MqttMsgBase.QOS_LEVEL_EXACTLY_ONCE, true);
+            //mqttClient.Publish("/sttbg_mqtt/response", Encoding.UTF8.GetBytes("{\"data\": \"" + "disabled" + "\"}"), MqttMsgBase.QOS_LEVEL_EXACTLY_ONCE, true);
 
 
-
+            //Supply Google credentials
             Environment.SetEnvironmentVariable("GOOGLE_APPLICATION_CREDENTIALS", "Proj T2s-89d4c34d98fc.json");
 
             if (NAudio.Wave.WaveIn.DeviceCount < 1)
@@ -411,13 +426,6 @@ namespace STT_Bulgarian_Console_app
                 recordingDevices.Add(WaveIn.GetCapabilities(n).ProductName);
             }
 
-            //Set up Google specific code
-            //oneShotConfig = new RecognitionConfig();
-            //oneShotConfig.Encoding = RecognitionConfig.Types.AudioEncoding.Linear16;
-            //oneShotConfig.SampleRateHertz = 16000;
-            //oneShotConfig.LanguageCode = "en";
-
-
 
             //Set up NAudio waveIn object and events
             waveIn.DeviceNumber = 0;
@@ -428,26 +436,21 @@ namespace STT_Bulgarian_Console_app
             waveBuffer = new BufferedWaveProvider(waveIn.WaveFormat);
             waveBuffer.DiscardOnBufferOverflow = true;
 
-            //We are using a timer object to fire a one second record interval
-            //this gets enabled and disabled based on when we get a peak detection from NAudio
-            //timer1Enabled = false;
-            //One second record window
-            //Hook up to timer tick event
-
-
-            //button_Click();
         }
 
         static void OnRecorderMaximumCalculated(object sender, MaxSampleEventArgs e)
         {
             float peak = Math.Max(e.MaxSample, Math.Abs(e.MinSample));
 
-            // multiply by 100 because the Progress bar's default maximum value is 100
+            // multiply by 100 because the default maximum value is 100
             peak *= 100;
             //Console.WriteLine("Recording Level " + peak);
             if (peak > 35)
             {
-                //Timer should not be enabled, meaning, we are not already recording
+                //We are using a timer object to fire a 3 second record interval
+                //this gets enabled and disabled based on when we get a peak detection from NAudio
+
+                //Here Timer should not be enabled, meaning, we are not already recording
                 if (timer1Enabled == false)
                 {
                     timer1Enabled = true;
@@ -484,6 +487,7 @@ namespace STT_Bulgarian_Console_app
             //Console.WriteLine("Timer stopped");
             //audioRecorder.SampleAggregator.Reset();
             //Console.Beep(800, 800);
+
             //Call the async google voice stream method with our saved audio buffer
             Task me = StreamBufferToGooglesAsync();
             try
@@ -496,7 +500,7 @@ namespace STT_Bulgarian_Console_app
             {
 
             }
-            Console.WriteLine("Talk");
+            Console.WriteLine("Listening - Say Robco, followed by a command.");
             //Console.Beep();
             audioRecorder.SampleAggregator.Reset();
             audioRecorder.BeginMonitoring(0);
@@ -537,14 +541,14 @@ namespace STT_Bulgarian_Console_app
             int offset = 0;
             int count = waveBuffer.BufferLength;
 
-            //Gulp ... yummy bytes ....
+            //Read the buffer
             waveBuffer.Read(buffer, offset, count);
             //Clear our internal wave buffer
             waveBuffer.ClearBuffer();
 
             try
             {
-                //Sending to Googles .... finally
+                //Sending to Google for STT 
                 await streamingCall.WriteAsync(new StreamingRecognizeRequest()
                 {
                     AudioContent = Google.Protobuf.ByteString.CopyFrom(buffer, 0, count)
@@ -556,9 +560,10 @@ namespace STT_Bulgarian_Console_app
             }
             finally
             {
-                //Tell googles we are done for now
+                //Tell Google we are done for now
                 await streamingCall.WriteCompleteAsync();
             }
+
             //Again, this is googles code example below, I tried unrolling this stuff
             //and the google api stopped working, so stays like this for now
 
@@ -577,16 +582,13 @@ namespace STT_Bulgarian_Console_app
                             if (lastSaidWhat != saidWhat)
                             {
                                 lastSaidWhat = saidWhat;
-                                //Need to call this on UI thread ....
                                 Console.WriteLine(saidWhat.ToLower().Trim() + " \r\n");
-                                // TODO Should we retain the message on the broker? reatin - true or false in our case??????????????????????????????????????????????????????
+
                                 // TODO Trim the message text or not???????????
 
-
-                                //mqttClient.Publish("/sttbg_mqtt/stt_text", Encoding.UTF8.GetBytes(saidWhat.ToLower()), MqttMsgBase.QOS_LEVEL_EXACTLY_ONCE, false);
-                                mqttClient.Publish("/sttbg_mqtt/stt_text", Encoding.UTF8.GetBytes("��data�test"), MqttMsgBase.QOS_LEVEL_EXACTLY_ONCE, true);
-                                mqttClient.Publish("/sttbg_mqtt/response", Encoding.UTF8.GetBytes("enabled"), MqttMsgBase.QOS_LEVEL_EXACTLY_ONCE, true);
-                                mqttClient.Publish("/sttbg_mqtt/stt_text", Encoding.UTF8.GetBytes(saidWhat.ToLower()), MqttMsgBase.QOS_LEVEL_EXACTLY_ONCE, true);
+                                string myString = Encoding.UTF8.GetString(Encoding.UTF8.GetBytes(saidWhat));
+                                // Send the recognized text to the MQTT topic    
+                                mqttClient.Publish("/sttbg_mqtt/stt_text", Encoding.UTF8.GetBytes("{\"data\": \"" + myString.ToLower() + "\"}"), MqttMsgBase.QOS_LEVEL_EXACTLY_ONCE, true);
 
                             }
 
@@ -616,53 +618,41 @@ namespace STT_Bulgarian_Console_app
             ////You can write functions to handle the different message types and call these from the message handler
             ////and pass the MqttMsgPublishEventArgs object to those functions.
 
-            //Console.OutputEncoding = System.Text.Encoding.UTF8;
 
-            //// Handle the received message
 
-            //////Console.WriteLine("raw message= " + Encoding.UTF8.GetString(e.Message) + "      on topic " + e.Topic);
-            //var stringLenght = Encoding.UTF8.GetString(e.Message).Length;
 
-            ////The MQTT client in ROS includes ' "��data�", ' infront of the message payload
-            ////Here we remove 7 symbols - ��data� from the message ("��data�", "") and get only the string payload
-            //string messageText = Encoding.UTF8.GetString(e.Message).Substring(9, stringLenght - 9);
-            //Console.WriteLine("Text to be spoken received => " + Encoding.UTF8.GetString(e.Message).Substring(9, stringLenght - 9));
-            Console.WriteLine("String received  => " + Encoding.UTF8.GetString(e.Message).ToString());
-            var stringLenght = Encoding.UTF8.GetString(e.Message).Length;
-            //Console.WriteLine("String received on topic /sttbg_mqtt/enable => " + Encoding.UTF8.GetString(e.Message).Substring(9, stringLenght - 9));
-            Console.WriteLine("String received on topic /sttbg_mqtt/enable => " + Encoding.UTF8.GetString(e.Message).ToString());
-            Console.WriteLine("topic => " + e.Topic.ToString());
             ////Branch based on the incoming messages topic e.Topic.
             if (e.Topic.ToString() == "/sttbg_mqtt/enable")
             {
-                //var stringLenght = Encoding.UTF8.GetString(e.Message).Length;
-                Console.WriteLine("String received on topic /sttbg_mqtt/enable => " + Encoding.UTF8.GetString(e.Message).Substring(7, stringLenght - 7));
                 //Console.WriteLine("String received on topic /sttbg_mqtt/enable => " + Encoding.UTF8.GetString(e.Message).ToString());
 
                 if (recordingDevices.Count > 0)
                 {
-                    if (monitoring == false && Encoding.UTF8.GetString(e.Message).Substring(7, stringLenght - 7) =="enable")
+                    if (monitoring == false && Encoding.UTF8.GetString(e.Message).ToString() == "{\"data\": \"enable\"}")
+
                     {
                         monitoring = true;
                         //Begin
                         audioRecorder.BeginMonitoring(0);
-                        sttEnabled = true;
+                        Console.WriteLine("Speach recognition ENABLED!");
                     }
-                    else if (monitoring == true && Encoding.UTF8.GetString(e.Message).Substring(7, stringLenght - 7) == "disable")
+                    else if (monitoring == true && Encoding.UTF8.GetString(e.Message).ToString() == "{\"data\": \"disable\"}")
                     {
                         monitoring = false;
                         waveIn.StopRecording();
                         audioRecorder.Stop();
                         //Console.Beep();
-                        sttEnabled = false;
+                        Console.WriteLine("Speach recognition DISABLED!");
                     }
                     else
                     {
-                        // pri povtoren enable???
+                        // Got second ENABLE command??? Should not happen, but process anyways...
+                        // Disable Speech recognition, assuming this was the intent, just the wrong button was pressed by the operator.
                         monitoring = false;
+                        waveIn.StopRecording();
                         audioRecorder.Stop();
-                        
-
+                        //Console.Beep();
+                        Console.WriteLine("Speach recognition DISABLED!");
                     }
 
 
@@ -670,13 +660,6 @@ namespace STT_Bulgarian_Console_app
 
 
             }
-            //else if (e.Topic == "/sttbg_mqtt/command")
-            //{
-            //    if (messageText == "cancel")
-            //    {
-            //        cancelSpeaking();
-            //    }
-            //}
         }
     }
 }
